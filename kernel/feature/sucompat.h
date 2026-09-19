@@ -2,6 +2,7 @@
 #define __KSU_H_SUCOMPAT
 #include <asm/ptrace.h>
 #include <linux/types.h>
+#include <linux/version.h>
 #include "compat/kernel_compat.h"
 
 #ifdef KSU_COMPAT_USE_STATIC_KEY
@@ -14,14 +15,34 @@ void ksu_sucompat_init(void);
 void ksu_sucompat_exit(void);
 
 // Handler functions exported for hook_manager
-#ifdef CONFIG_KSU_SUSFS
-int ksu_handle_faccessat(int *dfd, struct filename **filename, int *mode, int *__unused_flags);
+//
+// PitchKernel non-GKI fix, matching upstream issue ReSukiSU/ReSukiSU#387
+// and the validated fix at github.com/KeiraOMG0/ReSukiSU commit fb827bef:
+// upstream commit 03b60f26 changed the CONFIG_KSU_SUSFS-branch signature
+// of ksu_handle_faccessat/ksu_handle_stat from (const char __user **) to
+// (struct filename **) unconditionally, breaking non-GKI kernels whose
+// fs/open.c/fs/stat.c still declare+call with the old signature
+// (confirmed: this tree's fs/open.c:363/484, fs/stat.c:33/445 use
+// const char __user **). ksu_handle_faccessat is reverted unconditionally
+// (no non-GKI caller for the new signature exists); ksu_handle_stat keeps
+// a LINUX_VERSION_CODE guard since upstream's own 6.1+/SUSFS callers may
+// depend on the new signature there. The matching definition-side split
+// lives in feature/sucompat.c.
+//
+// NOTE: ksu_handle_post_execve's declaration was previously only in this
+// block's #else (non-SUSFS) branch, yet it is defined unconditionally in
+// sucompat.c and called unconditionally from lsm_hooks.c -- a pre-existing
+// gap, not introduced by this fix and not addressed here (not the cause
+// of the "conflicting types" build failure; flagged for separate review).
+int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *__unused_flags);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0) && defined(CONFIG_KSU_SUSFS)
 int ksu_handle_stat(int *dfd, struct filename **filename, int *flags);
 #else
-int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *__unused_flags);
 int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
+#ifndef CONFIG_KSU_SUSFS
 int ksu_handle_post_execve(int *fd, const char *filename, void *argv, void *envp, int *flags, int *retval);
-#endif // #ifdef CONFIG_KSU_SUSFS
+#endif
+#endif // #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0) && defined(CONFIG_KSU_SUSFS)
 
 #ifdef CONFIG_KSU_TRACEPOINT_HOOK
 #include <asm/current.h>
