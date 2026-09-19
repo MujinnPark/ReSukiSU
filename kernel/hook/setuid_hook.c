@@ -83,6 +83,14 @@ static inline void ksu_set_ksud_status(uid_t new_uid)
 #ifdef CONFIG_KSU_SUSFS
 extern struct work_struct susfs_extra_works;
 
+// Stub: is_zygote_next/is_isolated_process are new in ReSukiSU 3576e6a's
+// setuid_hook.c (zygote-isolated-service umount handling) but have no
+// definition in this kernel's susfs_def.h/susfs.c (SUSFS 2.3.0 backport
+// predates this feature). Stubbed to false to keep the link clean without
+// enabling zygote-next handling. See ReSukiSU issue #387 discussion.
+static inline bool is_zygote_next(const struct cred *cred) { return false; }
+static inline bool is_isolated_process(uid_t uid) { return false; }
+
 static int handle_zygote_next_setresuid(uid_t new_uid)
 {
     // Check if spawned process is isolated service first, and force to do umount if so
